@@ -7,22 +7,30 @@
 ## 🚀 Features | Özellikler
 
 **EN:**
-- **Automatic Assembly Scanning**: Scans assemblies and automatically registers services
+- **Automatic Assembly Scanning**: Scans one or more assemblies and automatically registers services
 - **Marker Interface Pattern**: Uses marker interfaces to determine service lifetimes
+- **Attribute Support**: `[ServiceRegistration]` as an alternative to marker interfaces (with self-registration)
+- **Open Generic Support**: Registers open generic services such as `IRepository<T>`
+- **Filtering**: Include/exclude types via a `Func<Type, bool>` predicate
+- **Safe Registration**: Optional `tryAdd` to avoid duplicate registrations
 - **Lifetime Management**: Supports Singleton, Scoped, and Transient lifetimes
+- **Resilient Scanning**: Tolerates `ReflectionTypeLoadException` (skips unloadable types)
 - **Simple Integration**: Easy integration with Microsoft.Extensions.DependencyInjection
-- **Convention-based Registration**: Automatically matches interfaces with implementations
 
 **TR:**
-- **Otomatik Assembly Tarama**: Assembly'leri tarar ve servisleri otomatik olarak kaydeder
+- **Otomatik Assembly Tarama**: Bir veya birden fazla assembly'yi tarar ve servisleri otomatik kaydeder
 - **Marker Interface Pattern**: Servis lifetime'larını belirlemek için marker interface'ler kullanır
+- **Attribute Desteği**: Marker'a alternatif `[ServiceRegistration]` (self-registration dahil)
+- **Open Generic Desteği**: `IRepository<T>` gibi açık generic servisleri kaydeder
+- **Filtreleme**: `Func<Type, bool>` predicate ile tip dahil etme/dışlama
+- **Güvenli Kayıt**: Duplicate kaydı önlemek için opsiyonel `tryAdd`
 - **Lifetime Yönetimi**: Singleton, Scoped ve Transient lifetime'larını destekler
+- **Dayanıklı Tarama**: `ReflectionTypeLoadException` durumunda yüklenebilen tipleri kullanır
 - **Basit Entegrasyon**: Microsoft.Extensions.DependencyInjection ile kolay entegrasyon
-- **Convention Tabanlı Kayıt**: Interface'leri implementation'larla otomatik eşleştirir
 
 ## 📋 Requirements | Gereksinimler
 
-- .NET 8.0 or higher | .NET 8.0 veya üzeri
+- .NET 8.0 / .NET 9.0 / .NET 10.0
 - Microsoft.Extensions.DependencyInjection package
 
 ## 🔧 Installation | Kurulum
@@ -54,8 +62,8 @@ Install-Package AssemblyServiceRegistrar
 ### Git Clone
 
 ```bash
-git clone https://github.com/sametbrr/assembly_service_registrar.git
-cd assembly_service_registrar
+git clone https://github.com/sametbrr/AssemblyServiceRegistrar.git
+cd AssemblyServiceRegistrar
 dotnet build
 ```
 
@@ -143,35 +151,93 @@ using AssemblyServiceRegistrar;
 using System.Reflection;
 
 // Program.cs
-var builder = Host.CreateDefaultBuilder(args);
+var builder = Host.CreateApplicationBuilder(args);
 
-builder.services.AddServicesFromAssembly(Assembly.GetExecutingAssembly());
+builder.Services.AddServicesFromAssembly(Assembly.GetExecutingAssembly());
 
 var host = builder.Build();
+```
 
+**EN:** To scan multiple assemblies at once:
+
+**TR:** Birden fazla assembly'yi tek seferde taramak için:
+
+```csharp
+builder.Services.AddServicesFromAssemblies(
+    Assembly.GetExecutingAssembly(),
+    typeof(SomeTypeInAnotherAssembly).Assembly);
+```
+
+### Attribute-based Registration | Attribute ile Kayıt
+
+**EN:** As an alternative to marker interfaces, decorate a class with `[ServiceRegistration]`. The attribute overrides marker-based lifetime resolution. If no service type is given, the class is registered against its `IService`-derived interfaces, or against itself (self-registration) when it has none.
+
+**TR:** Marker interface'lere alternatif olarak bir sınıfı `[ServiceRegistration]` ile işaretleyebilirsiniz. Attribute, marker tabanlı lifetime çözümlemesini geçersiz kılar. Servis tipi verilmezse sınıf, `IService` türevi interface'lerine; hiç yoksa kendi tipine (self-registration) kaydedilir.
+
+```csharp
+using AssemblyServiceRegistrar;
+using Microsoft.Extensions.DependencyInjection;
+
+// Self-registration | Kendi tipine kayıt
+[ServiceRegistration(ServiceLifetime.Singleton)]
+public class CacheManager { }
+
+// Explicit service type | Açık servis tipi
+[ServiceRegistration(ServiceLifetime.Scoped, typeof(IReportService))]
+public class ReportService : IReportService { }
+```
+
+### Open Generic Services | Open Generic Servisler
+
+```csharp
+public interface IRepository<T> : IScopedService { }
+public class Repository<T> : IRepository<T> { }
+
+// IRepository<> -> Repository<> olarak kaydedilir
+builder.Services.AddServicesFromAssembly(Assembly.GetExecutingAssembly());
+
+// var repo = provider.GetRequiredService<IRepository<User>>(); // Repository<User>
+```
+
+### Filtering & Safe Registration | Filtreleme ve Güvenli Kayıt
+
+```csharp
+// Belirli tipleri dışla | Exclude specific types
+builder.Services.AddServicesFromAssembly(
+    Assembly.GetExecutingAssembly(),
+    filter: t => !t.Namespace!.Contains("Internal"));
+
+// Duplicate kaydı engelle | Avoid duplicate registrations
+builder.Services.AddServicesFromAssembly(
+    Assembly.GetExecutingAssembly(),
+    tryAdd: true);
 ```
 
 ## 🔍 How It Works | Nasıl Çalışır
 
 **EN:**
-1. The library scans all types in the specified assembly
-2. Finds all classes that implement interfaces derived from `IService`
-3. Determines the service lifetime based on marker interfaces:
+1. The library scans all concrete (non-abstract) classes in the specified assemblies
+2. A class is a candidate if it implements an `IService`-derived interface or is decorated with `[ServiceRegistration]`
+3. Determines the service lifetime:
+   - `[ServiceRegistration(lifetime)]` takes precedence if present
    - `ISingletonService` → `ServiceLifetime.Singleton`
    - `IScopedService` → `ServiceLifetime.Scoped`
    - `ITransientService` → `ServiceLifetime.Transient`
-   - If no marker interface is found, uses the provided default lifetime
-4. Registers the service with the DI container
+   - Otherwise uses the provided default lifetime
+   - A class implementing **more than one** lifetime marker throws `InvalidOperationException`
+4. Registers the class against each `IService`-derived interface it implements (marker interfaces excluded); open generics are registered as open generic definitions
 
 **TR:**
-1. Kütüphane belirtilen assembly'deki tüm tipleri tarar
-2. `IService`'den türeyen interface'leri implement eden tüm class'ları bulur
-3. Marker interface'lere göre servis lifetime'ını belirler:
+1. Kütüphane belirtilen assembly'lerdeki tüm somut (soyut olmayan) sınıfları tarar
+2. Bir sınıf, `IService` türevi bir interface implement ediyorsa veya `[ServiceRegistration]` ile işaretliyse aday kabul edilir
+3. Servis lifetime'ını belirler:
+   - Varsa `[ServiceRegistration(lifetime)]` önceliklidir
    - `ISingletonService` → `ServiceLifetime.Singleton`
    - `IScopedService` → `ServiceLifetime.Scoped`
    - `ITransientService` → `ServiceLifetime.Transient`
-   - Eğer marker interface bulunamazsa, sağlanan varsayılan lifetime'ı kullanır
-4. Servisi DI container'a kaydeder
+   - Aksi halde sağlanan varsayılan lifetime kullanılır
+   - **Birden fazla** lifetime marker implement eden sınıf `InvalidOperationException` fırlatır
+4. Sınıfı, implement ettiği her `IService` türevi interface'e kaydeder (marker interface'ler hariç); open generic'ler açık generic tanımı olarak kaydedilir
 
 ## 📚 Marker Interfaces | Marker Interface'ler
 
@@ -208,16 +274,14 @@ namespace AssemblyServiceRegistrar
 ## ⚠️ Limitations | Sınırlamalar
 
 **EN:**
-- Only works with interfaces that inherit from `IService`
-- Does not support generic service registration
-- Requires marker interfaces for lifetime determination
-- One interface per implementation (no multiple interface implementations)
+- Interface-based registration only covers interfaces deriving from `IService` (use `[ServiceRegistration]` for others or self-registration)
+- A class must not implement more than one lifetime marker interface (throws)
+- Constructor/parameter-based conditional registration is not supported
 
 **TR:**
-- Sadece `IService`'den türeyen interface'lerle çalışır
-- Generic servis kayıtlarını desteklemez
-- Lifetime belirleme için marker interface'ler gerektirir
-- Her implementation için bir interface (çoklu interface implementation'ları desteklemez)
+- Interface tabanlı kayıt yalnızca `IService` türevi interface'leri kapsar (diğerleri veya self-registration için `[ServiceRegistration]` kullanın)
+- Bir sınıf birden fazla lifetime marker interface implement edemez (exception fırlatır)
+- Constructor/parametre tabanlı koşullu kayıt desteklenmez
 
 ## 📄 License | Lisans
 

@@ -1,0 +1,49 @@
+name: Publish NuGet
+
+# Tag push (v*) ile tetiklenir; sürüm tag'den alınır ve NuGet'e otomatik publish edilir.
+# Örnek: git tag v1.1.0 && git push origin v1.1.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Resolve version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      - name: Pack
+        run: >
+          dotnet pack AssemblyServiceRegistrar/AssemblyServiceRegistrar.csproj
+          --configuration Release --no-build
+          -p:Version=${{ steps.version.outputs.version }}
+          -o ${{ github.workspace }}/artifacts
+
+      - name: Push to NuGet
+        run: >
+          dotnet nuget push "${{ github.workspace }}/artifacts/*.nupkg"
+          --api-key ${{ secrets.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
