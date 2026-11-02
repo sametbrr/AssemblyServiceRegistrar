@@ -12,7 +12,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write   # GitHub Release oluşturmak için gerekli
+  contents: write   # GitHub release
+  id-token: write   # OIDC token for nuget.org trusted publishing
 
 env:
   PROJECT: AssemblyServiceRegistrar/AssemblyServiceRegistrar.csproj
@@ -20,6 +21,7 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: nuget
     steps:
       - uses: actions/checkout@v7
         with:
@@ -74,11 +76,19 @@ jobs:
           -p:Version="$VERSION"
           -o "$GITHUB_WORKSPACE/artifacts"
 
+      # Trusted publishing: exchange the GitHub OIDC token for a 1-hour nuget.org API key.
+      # nuget.org policy: owner sametbrr, repo AssemblyServiceRegistrar, workflow publish-nuget.yml, environment nuget.
+      - name: NuGet login (OIDC)
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: sametbrr
+
       - name: Push to NuGet
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
-          if [ -z "$NUGET_API_KEY" ]; then echo "::error::NUGET_API_KEY secret is not set"; exit 1; fi
+          if [ -z "$NUGET_API_KEY" ]; then echo "::error::NuGet login returned no API key (check the trusted publishing policy)"; exit 1; fi
           dotnet nuget push "$GITHUB_WORKSPACE/artifacts/*.nupkg" \
             --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
