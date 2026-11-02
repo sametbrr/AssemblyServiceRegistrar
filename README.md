@@ -2,6 +2,8 @@
 [![Downloads](https://img.shields.io/nuget/dt/AssemblyServiceRegistrar.svg)](https://www.nuget.org/packages/AssemblyServiceRegistrar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
 
+[Quick Start](#quick-start) • [Installation](#installation) • [Usage](#usage) • [How It Works](#how-it-works) • [Limitations](#limitations) • [Contributing](#contributing)
+
 # AssemblyServiceRegistrar
 
 A .NET library that auto-registers services via marker interfaces and attributes — supports all lifetimes and open generics.
@@ -31,13 +33,15 @@ That's it — no manual registration needed.
 
 ## Features
 
-- **Automatic Assembly Scanning** — scans one or more assemblies and registers services automatically
-- **Marker Interface Pattern** — use `ISingletonService`, `IScopedService`, or `ITransientService` to declare lifetime
-- **Attribute Support** — `[ServiceRegistration]` as an alternative, with self-registration
-- **Open Generic Support** — registers open generic services such as `IRepository<T>`
-- **Filtering** — include/exclude types via a `Func<Type, bool>` predicate
-- **Safe Registration** — optional `tryAdd` to avoid duplicate registrations
-- **Resilient Scanning** — tolerates `ReflectionTypeLoadException` (skips unloadable types)
+| | |
+|---|---|
+| **Automatic assembly scanning** | Scans one or more assemblies and registers services automatically |
+| **Marker interface pattern** | `ISingletonService`, `IScopedService` or `ITransientService` declares the lifetime |
+| **Attribute support** | `[ServiceRegistration]` as an alternative, including self-registration |
+| **Open generic support** | Registers open generic services such as `IRepository<T>` |
+| **Filtering** | Include or exclude types with a `Func<Type, bool>` predicate |
+| **Safe registration** | Optional `tryAdd` avoids duplicate registrations |
+| **Resilient scanning** | Tolerates `ReflectionTypeLoadException` by skipping unloadable types |
 
 ---
 
@@ -60,7 +64,7 @@ Install-Package AssemblyServiceRegistrar
 ```
 
 ```xml
-<PackageReference Include="AssemblyServiceRegistrar" Version="1.0.0" />
+<PackageReference Include="AssemblyServiceRegistrar" Version="1.1.1" />
 ```
 
 ### Build from source
@@ -75,7 +79,7 @@ dotnet build
 
 ## Usage
 
-### Marker interfaces
+### Declare lifetimes on your interfaces
 
 ```csharp
 using AssemblyServiceRegistrar;
@@ -163,6 +167,24 @@ builder.Services.AddServicesFromAssembly(
 
 ---
 
+## Limitations
+
+**Only `IService`-derived interfaces become service types.** Scanning registers a class against the interfaces it implements only when they derive from `IService`, so unrelated interfaces such as `IDisposable` are never registered by accident.
+
+**Workaround:** add `[ServiceRegistration(lifetime, typeof(IYourInterface))]` to the class, or leave out the service type to register the class as itself.
+
+**One lifetime marker per class.** A class that implements more than one of `ISingletonService`, `IScopedService` and `ITransientService` has no single lifetime, so scanning throws `InvalidOperationException`.
+
+**Workaround:** keep one marker per interface hierarchy, or set the lifetime on the class with `[ServiceRegistration]`, which takes precedence over markers.
+
+**No conditional registration.** The decision is made from types alone at startup; constructor parameters, configuration and environment are not evaluated.
+
+**Workaround:** exclude the type with the `filter` predicate and register it manually under the conditions you need.
+
+---
+
+---
+
 ## Marker Interfaces
 
 ```csharp
@@ -186,14 +208,23 @@ namespace AssemblyServiceRegistrar
 
 ---
 
-## Limitations
+## Contributing
 
-- Interface-based registration only covers interfaces deriving from `IService` — use `[ServiceRegistration]` for others or self-registration
-- A class must not implement more than one lifetime marker interface
-- Constructor/parameter-based conditional registration is not supported
+- Questions and ideas: [Discussions](https://github.com/sametbrr/AssemblyServiceRegistrar/discussions)
+- Bugs: [issue tracker](https://github.com/sametbrr/AssemblyServiceRegistrar/issues)
+- Pull requests: read the [contribution guide](https://github.com/sametbrr/.github/blob/main/CONTRIBUTING.md) first
+- Security reports: follow the [security policy](https://github.com/sametbrr/AssemblyServiceRegistrar/security/policy), not a public issue
 
 ---
 
 ## License
 
 MIT — see [LICENSE.txt](LICENSE.txt).
+
+---
+
+<div align="center">
+
+[Report Bug](https://github.com/sametbrr/AssemblyServiceRegistrar/issues) · [Request Feature](https://github.com/sametbrr/AssemblyServiceRegistrar/issues)
+
+</div>

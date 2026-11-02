@@ -2,6 +2,8 @@
 [![Downloads](https://img.shields.io/nuget/dt/AssemblyServiceRegistrar.svg)](https://www.nuget.org/packages/AssemblyServiceRegistrar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
 
+[Hızlı Başlangıç](#hızlı-başlangıç) • [Kurulum](#kurulum) • [Kullanım](#kullanım) • [Nasıl Çalışır](#nasıl-çalışır) • [Sınırlamalar](#sınırlamalar) • [Katkıda Bulunma](#katkıda-bulunma)
+
 # AssemblyServiceRegistrar
 
 Marker interface'ler ve attribute'lar aracılığıyla servisleri otomatik kaydeden bir .NET kütüphanesi — tüm lifetime'ları ve open generic'leri destekler.
@@ -31,19 +33,21 @@ Hepsi bu kadar — manuel kayıt gerekmez.
 
 ## Özellikler
 
-- **Otomatik Assembly Tarama** — bir veya birden fazla assembly'yi tarar ve servisleri otomatik kaydeder
-- **Marker Interface Pattern** — `ISingletonService`, `IScopedService` veya `ITransientService` ile lifetime tanımlama
-- **Attribute Desteği** — `[ServiceRegistration]` ile alternatif kullanım, self-registration dahil
-- **Open Generic Desteği** — `IRepository<T>` gibi açık generic servisleri kaydeder
-- **Filtreleme** — `Func<Type, bool>` predicate ile tip dahil etme/dışlama
-- **Güvenli Kayıt** — duplicate kaydı önlemek için opsiyonel `tryAdd`
-- **Dayanıklı Tarama** — `ReflectionTypeLoadException` durumunda yüklenebilen tipleri kullanır
+| | |
+|---|---|
+| **Otomatik assembly tarama** | Bir veya birden fazla assembly'yi tarar ve servisleri otomatik kaydeder |
+| **Marker interface pattern** | Lifetime'ı `ISingletonService`, `IScopedService` veya `ITransientService` belirler |
+| **Attribute desteği** | Alternatif olarak `[ServiceRegistration]`, self-registration dahil |
+| **Open generic desteği** | `IRepository<T>` gibi açık generic servisleri kaydeder |
+| **Filtreleme** | `Func<Type, bool>` predicate ile tip dahil etme veya dışlama |
+| **Güvenli kayıt** | Opsiyonel `tryAdd` duplicate kayıtları önler |
+| **Dayanıklı tarama** | `ReflectionTypeLoadException`'da yüklenemeyen tipleri atlayarak devam eder |
 
 ---
 
 ## Gereksinimler
 
-- .NET 8.0 or later
+- .NET 8.0 veya üstü
 - `Microsoft.Extensions.DependencyInjection`
 
 ---
@@ -55,12 +59,12 @@ dotnet add package AssemblyServiceRegistrar
 ```
 
 ```powershell
-# Package Manager Console
+# Package Manager Console içinde
 Install-Package AssemblyServiceRegistrar
 ```
 
 ```xml
-<PackageReference Include="AssemblyServiceRegistrar" Version="1.0.0" />
+<PackageReference Include="AssemblyServiceRegistrar" Version="1.1.1" />
 ```
 
 ### Kaynak koddan derleme
@@ -75,7 +79,7 @@ dotnet build
 
 ## Kullanım
 
-### Marker interface'ler
+### Interface'lerde lifetime belirtme
 
 ```csharp
 using AssemblyServiceRegistrar;
@@ -114,7 +118,7 @@ builder.Services.AddServicesFromAssemblies(
 ### Attribute ile kayıt
 
 ```csharp
-// Self-registration
+// Kendi tipine kayıt (self-registration)
 [ServiceRegistration(ServiceLifetime.Singleton)]
 public class CacheManager { }
 
@@ -163,6 +167,24 @@ builder.Services.AddServicesFromAssembly(
 
 ---
 
+## Sınırlamalar
+
+**Yalnızca `IService` türevi interface'ler servis tipi olur.** Tarama, bir sınıfı implement ettiği interface'lere yalnızca bunlar `IService`'ten türüyorsa kaydeder; böylece `IDisposable` gibi ilgisiz interface'ler yanlışlıkla kaydedilmez.
+
+**Geçici çözüm:** sınıfa `[ServiceRegistration(lifetime, typeof(IYourInterface))]` ekleyin ya da sınıfı kendi tipine kaydetmek için servis tipini boş bırakın.
+
+**Sınıf başına tek lifetime marker.** `ISingletonService`, `IScopedService` ve `ITransientService`'ten birden fazlasını implement eden bir sınıfın tek bir lifetime'ı olmaz; tarama `InvalidOperationException` fırlatır.
+
+**Geçici çözüm:** her interface hiyerarşisinde tek marker kullanın ya da lifetime'ı sınıf üzerinde `[ServiceRegistration]` ile belirtin; attribute marker'lardan önceliklidir.
+
+**Koşullu kayıt yok.** Karar başlangıçta yalnızca tiplere bakılarak verilir; constructor parametreleri, konfigürasyon ve ortam değerlendirilmez.
+
+**Geçici çözüm:** tipi `filter` predicate'i ile dışlayın ve ihtiyacınız olan koşullarla manuel kaydedin.
+
+---
+
+---
+
 ## Marker Interface'ler
 
 ```csharp
@@ -186,14 +208,23 @@ namespace AssemblyServiceRegistrar
 
 ---
 
-## Sınırlamalar
+## Katkıda Bulunma
 
-- Interface tabanlı kayıt yalnızca `IService` türevi interface'leri kapsar — diğerleri veya self-registration için `[ServiceRegistration]` kullanın
-- Bir sınıf birden fazla lifetime marker interface implement edemez
-- Constructor/parametre tabanlı koşullu kayıt desteklenmez
+- Sorular ve fikirler: [Discussions](https://github.com/sametbrr/AssemblyServiceRegistrar/discussions)
+- Hatalar: [issue takibi](https://github.com/sametbrr/AssemblyServiceRegistrar/issues)
+- Pull request'ler: önce [katkı rehberini](https://github.com/sametbrr/.github/blob/main/CONTRIBUTING.md) okuyun
+- Güvenlik bildirimleri: herkese açık issue yerine [güvenlik politikasını](https://github.com/sametbrr/AssemblyServiceRegistrar/security/policy) izleyin
 
 ---
 
 ## Lisans
 
 MIT — bkz. [LICENSE.txt](LICENSE.txt).
+
+---
+
+<div align="center">
+
+[Hata Bildir](https://github.com/sametbrr/AssemblyServiceRegistrar/issues) · [Özellik İste](https://github.com/sametbrr/AssemblyServiceRegistrar/issues)
+
+</div>
