@@ -1,60 +1,95 @@
 name: Publish NuGet
 
-# Tag push (v*) ile tetiklenir; sürüm tag'den alınır ve NuGet'e otomatik publish edilir.
-# Örnek: git tag v1.1.0 && git push origin v1.1.0
+# Tag push (v*) ile tetiklenir. Tag, csproj'daki <Version> ile birebir aynı olmalı ve
+# master üzerindeki bir commit'i göstermelidir; aksi halde publish yapılmaz.
+# Örnek: csproj'da <Version>1.1.1</Version> → git tag v1.1.1 && git push origin v1.1.1
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # GitHub Release oluşturmak için gerekli
+
+env:
+  PROJECT: AssemblyServiceRegistrar/AssemblyServiceRegistrar.csproj
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # GitHub Release oluşturmak için gerekli
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check ref
+        env:
+          DEFAULT_BRANCH: master
+        run: |
+          COMMIT=$(git rev-parse "${GITHUB_SHA}^{commit}")
+          if ! git merge-base --is-ancestor "$COMMIT" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::tag $GITHUB_REF_NAME points to a commit that is not on $DEFAULT_BRANCH"; exit 1
+          fi
+
+      - name: Resolve version and check tag
+        id: version
+        run: |
+          VERSION=$(sed -n 's:.*<Version>[[:space:]]*\([^<[:space:]]*\)[[:space:]]*</Version>.*:\1:p' "$PROJECT" | head -1)
+          if [ -z "$VERSION" ]; then echo "::error::no <Version> in $PROJECT"; exit 1; fi
+          TAG="v${VERSION}"
+          if [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match $PROJECT version $VERSION"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: |
             8.0.x
             9.0.x
             10.0.x
 
-      - name: Resolve version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
       - name: Restore
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet build --configuration Release --no-restore -p:Version="$VERSION"
 
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal
 
       - name: Pack
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: >
-          dotnet pack AssemblyServiceRegistrar/AssemblyServiceRegistrar.csproj
+          dotnet pack "$PROJECT"
           --configuration Release --no-build
-          -p:Version=${{ steps.version.outputs.version }}
-          -o ${{ github.workspace }}/artifacts
+          -p:Version="$VERSION"
+          -o "$GITHUB_WORKSPACE/artifacts"
 
       - name: Push to NuGet
-        run: >
-          dotnet nuget push "${{ github.workspace }}/artifacts/*.nupkg"
-          --api-key ${{ secrets.NUGET_API_KEY }}
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then echo "::error::NUGET_API_KEY secret is not set"; exit 1; fi
+          dotnet nuget push "$GITHUB_WORKSPACE/artifacts/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: v${{ steps.version.outputs.version }}
-          generate_release_notes: true
-          files: |
-            ${{ github.workspace }}/artifacts/*.nupkg
-            ${{ github.workspace }}/artifacts/*.snupkg
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "Release $TAG already exists."; exit 0; fi
+          shopt -s nullglob
+          gh release create "$TAG" "$GITHUB_WORKSPACE"/artifacts/*.nupkg "$GITHUB_WORKSPACE"/artifacts/*.snupkg \
+            --title "$TAG" --generate-notes --verify-tag

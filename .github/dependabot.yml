@@ -1,0 +1,22 @@
+# Dependabot: weekly, grouped version updates (max 5 open PRs per ecosystem).
+# Package ecosystems group minor and patch bumps into one PR; majors arrive one per PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      nuget-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
